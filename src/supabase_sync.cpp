@@ -22,7 +22,6 @@ void SupabaseSync::set_callbacks(SyncCallback on_sync, StatusMessageCallback on_
 void SupabaseSync::configure(const std::string& url, const std::string& anon_key, int interval_sec) {
     std::lock_guard<std::mutex> lock(mutex_);
     url_ = url;
-    // Strip trailing slash if present
     if (!url_.empty() && url_.back() == '/') {
         url_.pop_back();
     }
@@ -164,21 +163,21 @@ void SupabaseSync::polling_worker() {
         if (is_configured()) {
             RemoteServerState remote;
             if (fetch_remote_state(remote)) {
-                bool changed = false;
+                bool meaningful_change = false;
                 SyncCallback cb;
                 {
                     std::lock_guard<std::mutex> lock(mutex_);
+                    // Only notify if status, server_ip, or launch_id actually changed!
                     if (remote.status != last_known_state_.status ||
                         remote.server_ip != last_known_state_.server_ip ||
-                        remote.launch_id != last_known_state_.launch_id ||
-                        remote.updated_at != last_known_state_.updated_at) {
+                        remote.launch_id != last_known_state_.launch_id) {
                         last_known_state_ = remote;
-                        changed = true;
+                        meaningful_change = true;
                         cb = on_sync_;
                     }
                 }
 
-                if (changed && cb) {
+                if (meaningful_change && cb) {
                     cb(remote);
                 }
             }

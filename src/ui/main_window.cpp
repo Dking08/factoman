@@ -343,7 +343,7 @@ void MainWindow::process_pending_events() {
                     box_details_->copy_label(det.c_str());
                 }
 
-                append_log("[Sync] " + ss.str());
+                // Update bottom status bar only (do not pollute Factorio console log)
                 status_bar_->copy_label(ss.str().c_str());
                 break;
             }
