@@ -7,10 +7,9 @@
 MainWindow::MainWindow(int w, int h, const char* title) {
     config_ = AppConfig::load();
     setup_ui(w, h);
-    apply_styling();
     setup_clients();
 
-    // Schedule high-frequency GUI event drain
+    // Drain background event queue into GUI
     Fl::add_timeout(0.05, cb_gui_update_timer, this);
 }
 
@@ -27,152 +26,111 @@ void MainWindow::show(int argc, char** argv) {
 }
 
 void MainWindow::setup_ui(int w, int h) {
-    win_ = new Fl_Window(w, h, "FactoMan - Factorio.Zone Manager");
-    win_->color(fl_rgb_color(212, 208, 200)); // Classic 90s system gray
+    win_ = new Fl_Window(w, h, "FactoMan - Factorio Server Manager");
 
     // 1. Menu Bar
     menu_bar_ = new Fl_Menu_Bar(0, 0, w, 24);
-    menu_bar_->box(FL_UP_BOX);
     menu_bar_->add("&File/&Settings...", FL_CTRL + 's', cb_open_settings, this);
     menu_bar_->add("&File/E&xit", FL_CTRL + 'q', cb_menu_exit, this);
     menu_bar_->add("&Server/&Start Server", 0, cb_start_server, this);
     menu_bar_->add("&Server/S&top Server", 0, cb_stop_server, this);
     menu_bar_->add("&Server/&Clear Logs", 0, cb_clear_logs, this);
-    menu_bar_->add("&Help/&About FactoMan", 0, cb_menu_about, this);
+    menu_bar_->add("&Help/&About", 0, cb_menu_about, this);
 
-    // 2. Status & IP Panel
-    Fl_Box* pnl_status = new Fl_Box(12, 32, w - 24, 76);
-    pnl_status->box(FL_ENGRAVED_FRAME);
+    // 2. Status and IP Row
+    int cur_y = 34;
+    out_status_ = new Fl_Output(65, cur_y, 220, 26, "Status:");
+    out_status_->value("Offline");
 
-    box_status_led_ = new Fl_Box(26, 46, 18, 18);
-    box_status_led_->box(FL_OVAL_BOX);
-    box_status_led_->color(fl_rgb_color(140, 140, 140)); // Initially gray
-
-    box_status_text_ = new Fl_Box(52, 44, 250, 22, "SERVER OFFLINE");
-    box_status_text_->labelfont(FL_HELVETICA_BOLD);
-    box_status_text_->labelsize(14);
-    box_status_text_->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-
-    box_details_ = new Fl_Box(52, 70, 280, 18, "Region: ap-south-1 | Slot: slot1 | Ver: 2.1.17");
-    box_details_->labelfont(FL_HELVETICA);
-    box_details_->labelsize(11);
-    box_details_->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-    box_details_->labelcolor(fl_rgb_color(80, 80, 80));
-
-    Fl_Box* lbl_ip = new Fl_Box(340, 56, 70, 28, "Server IP:");
-    lbl_ip->labelfont(FL_HELVETICA_BOLD);
-    lbl_ip->labelsize(12);
-    lbl_ip->align(FL_ALIGN_RIGHT | FL_ALIGN_INSIDE);
-
-    out_ip_ = new Fl_Output(415, 56, 200, 28);
-    out_ip_->box(FL_DOWN_BOX);
-    out_ip_->color(FL_WHITE);
-    out_ip_->textfont(FL_COURIER_BOLD);
-    out_ip_->textsize(13);
+    out_ip_ = new Fl_Output(350, cur_y, 200, 26, "Server IP:");
     out_ip_->value("---.---.---.---:-----");
 
-    btn_copy_ip_ = new Fl_Button(625, 56, 105, 28, "Copy IP");
-    btn_copy_ip_->box(FL_UP_BOX);
-    btn_copy_ip_->labelfont(FL_HELVETICA_BOLD);
+    btn_copy_ip_ = new Fl_Button(560, cur_y, 115, 26, "Copy IP");
     btn_copy_ip_->callback(cb_copy_ip, this);
 
-    // 3. Action Controls Panel
-    Fl_Box* pnl_ctrls = new Fl_Box(12, 116, w - 24, 46);
-    pnl_ctrls->box(FL_UP_BOX);
-
-    btn_start_ = new Fl_Button(22, 124, 130, 30, "START SERVER");
-    btn_start_->box(FL_UP_BOX);
-    btn_start_->labelfont(FL_HELVETICA_BOLD);
-    btn_start_->labelcolor(fl_rgb_color(0, 100, 0));
+    // 3. Action Buttons Row
+    cur_y += 34;
+    btn_start_ = new Fl_Button(15, cur_y, 130, 30, "Start Server");
     btn_start_->callback(cb_start_server, this);
 
-    btn_stop_ = new Fl_Button(162, 124, 130, 30, "STOP SERVER");
-    btn_stop_->box(FL_UP_BOX);
-    btn_stop_->labelfont(FL_HELVETICA_BOLD);
-    btn_stop_->labelcolor(fl_rgb_color(150, 0, 0));
+    btn_stop_ = new Fl_Button(155, cur_y, 130, 30, "Stop Server");
     btn_stop_->callback(cb_stop_server, this);
-    btn_stop_->deactivate(); // Initially deactivated
+    btn_stop_->deactivate();
 
-    btn_clear_logs_ = new Fl_Button(302, 124, 100, 30, "Clear Logs");
-    btn_clear_logs_->box(FL_UP_BOX);
+    btn_clear_logs_ = new Fl_Button(295, cur_y, 100, 30, "Clear Logs");
     btn_clear_logs_->callback(cb_clear_logs, this);
 
-    btn_settings_ = new Fl_Button(w - 128, 124, 106, 30, "Settings...");
-    btn_settings_->box(FL_UP_BOX);
+    btn_settings_ = new Fl_Button(560, cur_y, 115, 30, "Settings...");
     btn_settings_->callback(cb_open_settings, this);
 
-    // 4. Terminal Console Display
-    Fl_Box* lbl_console = new Fl_Box(12, 170, w - 24, 18, "=== LIVE FACTORIO SERVER LOGS ===");
-    lbl_console->labelfont(FL_HELVETICA_BOLD);
-    lbl_console->labelsize(11);
-    lbl_console->box(FL_FLAT_BOX);
-    lbl_console->color(fl_rgb_color(190, 186, 180));
+    // 4. Details Label
+    cur_y += 38;
+    box_details_ = new Fl_Box(15, cur_y, w - 30, 18, "Region: ap-south-1 | Slot: slot1 | Ver: 2.1.17");
+    box_details_->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+    box_details_->labelsize(12);
 
+    // 5. Console Display
+    cur_y += 24;
+    int console_h = h - cur_y - 75;
     buf_console_ = new Fl_Text_Buffer();
-    txt_console_ = new Fl_Text_Display(12, 190, w - 24, 340);
+    txt_console_ = new Fl_Text_Display(15, cur_y, w - 30, console_h);
     txt_console_->buffer(buf_console_);
-    txt_console_->box(FL_DOWN_BOX);
-    txt_console_->color(FL_BLACK);
-    txt_console_->textcolor(fl_rgb_color(0, 255, 100)); // CRT green
     txt_console_->textfont(FL_COURIER);
     txt_console_->textsize(12);
 
-    // 5. Console Command Input
-    inp_command_ = new Fl_Input(82, 538, w - 194, 28, "Command:");
-    inp_command_->box(FL_DOWN_BOX);
-    inp_command_->labelfont(FL_HELVETICA_BOLD);
+    // 6. Command Input Row
+    cur_y += console_h + 8;
+    inp_command_ = new Fl_Input(85, cur_y, w - 195, 26, "Command:");
     inp_command_->textfont(FL_COURIER);
     inp_command_->textsize(12);
     inp_command_->when(FL_WHEN_ENTER_KEY);
     inp_command_->callback(cb_send_console, this);
 
-    btn_send_command_ = new Fl_Button(w - 104, 538, 92, 28, "Send");
-    btn_send_command_->box(FL_UP_BOX);
-    btn_send_command_->labelfont(FL_HELVETICA_BOLD);
+    btn_send_command_ = new Fl_Button(w - 100, cur_y, 85, 26, "Send");
     btn_send_command_->callback(cb_send_console, this);
 
-    // 6. Bottom Status Bar
-    status_bar_ = new Fl_Box(12, 574, w - 24, 24, "Ready | Sync: Initializing... | WS: Disconnected");
-    status_bar_->box(FL_DOWN_BOX);
+    // 7. Status Bar
+    cur_y += 34;
+    status_bar_ = new Fl_Box(15, cur_y, w - 30, 20, "Ready");
+    status_bar_->box(FL_THIN_DOWN_BOX);
     status_bar_->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-    status_bar_->labelfont(FL_HELVETICA);
     status_bar_->labelsize(11);
 
     win_->end();
     win_->resizable(txt_console_);
 
-    settings_dialog_ = std::make_unique<SettingsDialog>(520, 360, "FactoMan Configuration");
-}
-
-void MainWindow::apply_styling() {
-    Fl::set_color(FL_GRAY, 212, 208, 200);
+    settings_dialog_ = std::make_unique<SettingsDialog>(500, 340, "FactoMan Settings");
 }
 
 void MainWindow::setup_clients() {
     fz_client_ = std::make_unique<FactorioZoneClient>();
     sync_client_ = std::make_unique<SupabaseSync>();
 
-    // Connect FZ callbacks
+    // Connect FactorioZone callbacks
     fz_client_->set_callbacks(
         [this](const std::string& line) {
             std::lock_guard<std::mutex> lock(event_mutex_);
-            event_queue_.push_back({GuiEvent::LOG, line, "", 0, FzState::OFFLINE, {}});
+            event_queue_.push_back({GuiEvent::LOG, line, "", "", 0, FzState::OFFLINE, {}});
         },
         [this](const std::string& ip) {
             std::lock_guard<std::mutex> lock(event_mutex_);
-            event_queue_.push_back({GuiEvent::IP, ip, "", 0, FzState::RUNNING, {}});
+            event_queue_.push_back({GuiEvent::IP, ip, "", "", 0, FzState::RUNNING, {}});
         },
         [this](FzState state, const std::string& msg) {
             std::lock_guard<std::mutex> lock(event_mutex_);
-            event_queue_.push_back({GuiEvent::STATUS, msg, "", 0, state, {}});
+            event_queue_.push_back({GuiEvent::STATUS, msg, "", "", 0, state, {}});
         },
         [this](long long lid) {
             std::lock_guard<std::mutex> lock(event_mutex_);
-            event_queue_.push_back({GuiEvent::LAUNCH_ID, "", "", lid, FzState::OFFLINE, {}});
+            event_queue_.push_back({GuiEvent::LAUNCH_ID, "", "", "", lid, FzState::OFFLINE, {}});
         },
         [this](const std::string& secret) {
             std::lock_guard<std::mutex> lock(event_mutex_);
-            event_queue_.push_back({GuiEvent::SECRET, secret, "", 0, FzState::OFFLINE, {}});
+            event_queue_.push_back({GuiEvent::SECRET, secret, "", "", 0, FzState::OFFLINE, {}});
+        },
+        [this](const std::string& slot, const std::string& region, const std::string& ver) {
+            std::lock_guard<std::mutex> lock(event_mutex_);
+            event_queue_.push_back({GuiEvent::SLOT, slot, region, ver, 0, FzState::OFFLINE, {}});
         }
     );
 
@@ -187,11 +145,10 @@ void MainWindow::setup_clients() {
         },
         [this](const std::string& msg, bool) {
             std::lock_guard<std::mutex> lock(event_mutex_);
-            event_queue_.push_back({GuiEvent::STATUS, msg, "", 0, FzState::OFFLINE, {}});
+            event_queue_.push_back({GuiEvent::STATUS, msg, "", "", 0, FzState::OFFLINE, {}});
         }
     );
 
-    // Configure and start
     sync_client_->configure(config_.supabase_url, config_.supabase_key, config_.sync_interval_sec);
     sync_client_->start_polling();
 
@@ -199,12 +156,12 @@ void MainWindow::setup_clients() {
     fz_client_->login(config_.user_token);
     fz_client_->start_websocket_thread();
 
-    append_log("[FactoMan] Application initialized.");
-    append_log("[FactoMan] Connecting to factorio.zone WebSocket...");
+    append_log("[FactoMan] Application started.");
+    append_log("[FactoMan] Connecting to factorio.zone...");
     if (sync_client_->is_configured()) {
-        append_log("[FactoMan] Supabase Multi-User Sync enabled.");
+        append_log("[FactoMan] Supabase Sync is active (" + config_.player_nick + ").");
     } else {
-        append_log("[FactoMan] Notice: Supabase Sync not configured. You can configure it in Settings.");
+        append_log("[FactoMan] Note: Supabase Sync is not configured yet. Configure in Settings.");
     }
 }
 
@@ -224,12 +181,9 @@ void MainWindow::process_pending_events() {
 
             case GuiEvent::IP: {
                 out_ip_->value(ev.str1.c_str());
-                std::string status_msg = "SERVER RUNNING: " + ev.str1;
-                box_status_text_->copy_label(status_msg.c_str());
-                update_status_led(FzState::RUNNING);
+                out_status_->value("Running");
                 update_controls_state(FzState::RUNNING);
 
-                // Publish to Supabase
                 if (sync_client_->is_configured()) {
                     sync_client_->publish_state("RUNNING", ev.str1, fz_client_->get_launch_id(),
                                                 config_.player_nick, config_.region, config_.save_slot, config_.factorio_version);
@@ -238,24 +192,23 @@ void MainWindow::process_pending_events() {
             }
 
             case GuiEvent::STATUS: {
-                update_status_led(ev.fz_state);
                 update_controls_state(ev.fz_state);
 
                 std::string st_str;
                 switch (ev.fz_state) {
-                    case FzState::OFFLINE: st_str = "SERVER OFFLINE"; break;
-                    case FzState::CONNECTING: st_str = "CONNECTING TO WEBSOCKET..."; break;
-                    case FzState::CONNECTED: st_str = "CONNECTED TO FACTORIO.ZONE"; break;
-                    case FzState::LOGGED_IN: st_str = "LOGGED IN"; break;
-                    case FzState::STARTING: st_str = "STARTING INSTANCE..."; break;
-                    case FzState::RUNNING: st_str = "SERVER RUNNING"; break;
-                    case FzState::STOPPING: st_str = "STOPPING INSTANCE..."; break;
-                    case FzState::ERROR_STATE: st_str = "ERROR"; break;
+                    case FzState::OFFLINE: st_str = "Offline (Ready)"; break;
+                    case FzState::CONNECTING: st_str = "Connecting..."; break;
+                    case FzState::CONNECTED: st_str = "Connected"; break;
+                    case FzState::LOGGED_IN: st_str = "Ready"; break;
+                    case FzState::STARTING: st_str = "Starting..."; break;
+                    case FzState::RUNNING: st_str = "Running"; break;
+                    case FzState::STOPPING: st_str = "Stopping..."; break;
+                    case FzState::ERROR_STATE: st_str = "Error"; break;
                 }
+                out_status_->value(st_str.c_str());
                 if (!ev.str1.empty()) {
-                    st_str += " (" + ev.str1 + ")";
+                    status_bar_->copy_label(ev.str1.c_str());
                 }
-                box_status_text_->copy_label(st_str.c_str());
                 break;
             }
 
@@ -266,12 +219,22 @@ void MainWindow::process_pending_events() {
                 break;
             }
 
+            case GuiEvent::SLOT: {
+                if (!ev.str1.empty()) config_.save_slot = ev.str1;
+                if (!ev.str2.empty()) config_.region = ev.str2;
+                if (!ev.str3.empty()) config_.factorio_version = ev.str3;
+                std::string det = "Region: " + config_.region + " | Slot: " + config_.save_slot +
+                                  " | Ver: " + config_.factorio_version;
+                box_details_->copy_label(det.c_str());
+                break;
+            }
+
             case GuiEvent::SECRET: {
-                std::string sb = "WS: Connected (Secret: " + ev.str1.substr(0, 6) + "...)";
+                std::string sb = "WS: Connected";
                 if (sync_client_->is_configured()) {
-                    sb += " | Sync: Supabase Active (" + config_.player_nick + ")";
+                    sb += " | Supabase: Synced (" + config_.player_nick + ")";
                 } else {
-                    sb += " | Sync: Local Only";
+                    sb += " | Supabase: Not Configured";
                 }
                 status_bar_->copy_label(sb.c_str());
                 break;
@@ -280,24 +243,24 @@ void MainWindow::process_pending_events() {
             case GuiEvent::REMOTE_SYNC: {
                 const auto& rs = ev.remote_state;
                 std::ostringstream ss;
-                ss << "Sync from [" << rs.updated_by << "]: " << rs.status;
+                ss << "Sync: " << rs.status;
+                if (!rs.updated_by.empty()) {
+                    ss << " (by " << rs.updated_by << ")";
+                }
                 if (!rs.server_ip.empty()) {
-                    ss << " (" << rs.server_ip << ")";
                     out_ip_->value(rs.server_ip.c_str());
                 }
 
                 if (rs.status == "RUNNING") {
-                    update_status_led(FzState::RUNNING);
+                    out_status_->value("Running");
                     update_controls_state(FzState::RUNNING);
-                    box_status_text_->copy_label(("SERVER RUNNING (" + rs.updated_by + ")").c_str());
                     if (rs.launch_id > 0) {
                         fz_client_->set_server_details(rs.server_ip, rs.launch_id, FzState::RUNNING);
                     }
                 } else if (rs.status == "OFFLINE") {
-                    update_status_led(FzState::OFFLINE);
+                    out_status_->value("Offline");
                     update_controls_state(FzState::OFFLINE);
                     out_ip_->value("---.---.---.---:-----");
-                    box_status_text_->copy_label("SERVER OFFLINE");
                 }
 
                 append_log("[Sync] " + ss.str());
@@ -312,33 +275,7 @@ void MainWindow::append_log(const std::string& line) {
     if (!buf_console_) return;
     std::string text = line + "\n";
     buf_console_->append(text.c_str());
-
-    // Auto-scroll to bottom
     txt_console_->scroll(buf_console_->length(), 0);
-}
-
-void MainWindow::update_status_led(FzState state) {
-    switch (state) {
-        case FzState::OFFLINE:
-            box_status_led_->color(fl_rgb_color(140, 140, 140)); // Gray
-            break;
-        case FzState::CONNECTING:
-        case FzState::STARTING:
-            box_status_led_->color(fl_rgb_color(240, 180, 0)); // Amber
-            break;
-        case FzState::CONNECTED:
-        case FzState::LOGGED_IN:
-            box_status_led_->color(fl_rgb_color(0, 180, 240)); // Cyan
-            break;
-        case FzState::RUNNING:
-            box_status_led_->color(fl_rgb_color(0, 230, 0)); // Bright Green
-            break;
-        case FzState::STOPPING:
-        case FzState::ERROR_STATE:
-            box_status_led_->color(fl_rgb_color(220, 40, 40)); // Red
-            break;
-    }
-    box_status_led_->redraw();
 }
 
 void MainWindow::update_controls_state(FzState state) {
@@ -353,7 +290,7 @@ void MainWindow::update_controls_state(FzState state) {
 
 void MainWindow::cb_start_server(Fl_Widget*, void* data) {
     auto* self = static_cast<MainWindow*>(data);
-    self->append_log("[Action] Starting server instance...");
+    self->append_log("[Action] Starting server...");
     self->btn_start_->deactivate();
 
     std::thread([self]() {
@@ -365,14 +302,14 @@ void MainWindow::cb_start_server(Fl_Widget*, void* data) {
         );
         if (!ok) {
             std::lock_guard<std::mutex> lock(self->event_mutex_);
-            self->event_queue_.push_back({GuiEvent::STATUS, "Start instance failed", "", 0, FzState::ERROR_STATE, {}});
+            self->event_queue_.push_back({GuiEvent::STATUS, "Failed to start server", "", "", 0, FzState::ERROR_STATE, {}});
         }
     }).detach();
 }
 
 void MainWindow::cb_stop_server(Fl_Widget*, void* data) {
     auto* self = static_cast<MainWindow*>(data);
-    self->append_log("[Action] Stopping server instance...");
+    self->append_log("[Action] Stopping server...");
     self->btn_stop_->deactivate();
 
     std::thread([self]() {
@@ -389,9 +326,9 @@ void MainWindow::cb_copy_ip(Fl_Widget*, void* data) {
     auto* self = static_cast<MainWindow*>(data);
     const char* ip_val = self->out_ip_->value();
     if (ip_val && std::string(ip_val) != "---.---.---.---:-----") {
-        Fl::copy(ip_val, static_cast<int>(strlen(ip_val)), 1); // Clipboard
-        Fl::copy(ip_val, static_cast<int>(strlen(ip_val)), 0); // Primary selection
-        self->btn_copy_ip_->copy_label("Copied!");
+        Fl::copy(ip_val, static_cast<int>(strlen(ip_val)), 1);
+        Fl::copy(ip_val, static_cast<int>(strlen(ip_val)), 0);
+        self->btn_copy_ip_->label("Copied!");
         Fl::remove_timeout(cb_revert_copy_btn, self);
         Fl::add_timeout(1.5, cb_revert_copy_btn, self);
     }
@@ -399,7 +336,7 @@ void MainWindow::cb_copy_ip(Fl_Widget*, void* data) {
 
 void MainWindow::cb_revert_copy_btn(void* data) {
     auto* self = static_cast<MainWindow*>(data);
-    self->btn_copy_ip_->copy_label("Copy IP");
+    self->btn_copy_ip_->label("Copy IP");
 }
 
 void MainWindow::cb_send_console(Fl_Widget*, void* data) {
@@ -413,7 +350,7 @@ void MainWindow::cb_send_console(Fl_Widget*, void* data) {
         std::thread([self, cmd_str]() {
             bool ok = self->fz_client_->send_console(cmd_str);
             if (!ok) {
-                self->append_log("[Error] Failed to send console command");
+                self->append_log("[Error] Command failed to send");
             }
         }).detach();
     }
@@ -436,13 +373,10 @@ void MainWindow::cb_open_settings(Fl_Widget*, void* data) {
                           " | Ver: " + self->config_.factorio_version;
         self->box_details_->copy_label(det.c_str());
 
-        // Reconfigure sync
         self->sync_client_->configure(self->config_.supabase_url, self->config_.supabase_key, self->config_.sync_interval_sec);
-
-        // Re-login FZ
         self->fz_client_->login(self->config_.user_token);
 
-        self->append_log("[Settings] Configuration saved.");
+        self->append_log("[Settings] Configuration updated.");
     });
 }
 
@@ -459,5 +393,5 @@ void MainWindow::cb_menu_exit(Fl_Widget*, void* data) {
 
 void MainWindow::cb_menu_about(Fl_Widget*, void*) {
     fl_message_title("About FactoMan");
-    fl_message("FactoMan v1.0\nFactorio.Zone Server Manager & Multi-User Sync Client\nBuilt with C++ & FLTK");
+    fl_message("FactoMan v1.0\nFactorio Server Manager\nBuilt with C++ & FLTK");
 }

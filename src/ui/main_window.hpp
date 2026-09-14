@@ -25,7 +25,6 @@ public:
     void show(int argc, char** argv);
 
 private:
-    // UI Callbacks
     static void cb_start_server(Fl_Widget* w, void* data);
     static void cb_stop_server(Fl_Widget* w, void* data);
     static void cb_copy_ip(Fl_Widget* w, void* data);
@@ -35,15 +34,12 @@ private:
     static void cb_revert_copy_btn(void* data);
     static void cb_gui_update_timer(void* data);
 
-    // Menu callbacks
     static void cb_menu_exit(Fl_Widget* w, void* data);
     static void cb_menu_about(Fl_Widget* w, void* data);
 
     void setup_ui(int w, int h);
     void setup_clients();
-    void apply_styling();
     void append_log(const std::string& line);
-    void update_status_led(FzState state);
     void update_controls_state(FzState state);
     void process_pending_events();
 
@@ -52,17 +48,16 @@ private:
     std::unique_ptr<SupabaseSync> sync_client_;
     std::unique_ptr<SettingsDialog> settings_dialog_;
 
-    // Widgets
+    // Standard native FLTK Widgets
     Fl_Window* win_ = nullptr;
     Fl_Menu_Bar* menu_bar_ = nullptr;
-    Fl_Box* box_status_led_ = nullptr;
-    Fl_Box* box_status_text_ = nullptr;
+    Fl_Output* out_status_ = nullptr;
     Fl_Output* out_ip_ = nullptr;
     Fl_Button* btn_copy_ip_ = nullptr;
     Fl_Button* btn_start_ = nullptr;
     Fl_Button* btn_stop_ = nullptr;
-    Fl_Button* btn_settings_ = nullptr;
     Fl_Button* btn_clear_logs_ = nullptr;
+    Fl_Button* btn_settings_ = nullptr;
 
     Fl_Box* box_details_ = nullptr;
     Fl_Text_Display* txt_console_ = nullptr;
@@ -81,10 +76,12 @@ private:
             STATUS,
             LAUNCH_ID,
             REMOTE_SYNC,
-            SECRET
+            SECRET,
+            SLOT
         } type;
         std::string str1;
         std::string str2;
+        std::string str3;
         long long num = 0;
         FzState fz_state = FzState::OFFLINE;
         RemoteServerState remote_state;

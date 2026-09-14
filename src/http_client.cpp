@@ -2,6 +2,14 @@
 #include <curl/curl.h>
 #include <iostream>
 
+static void apply_ssl_settings(CURL* curl) {
+#if defined(CURLSSLOPT_NATIVE_CA)
+    curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
+#endif
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+}
+
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     size_t total = size * nmemb;
     std::string* s = static_cast<std::string*>(userp);
@@ -47,9 +55,8 @@ HttpResponse HttpClient::get(const std::string& url,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp.body);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_sec);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "FactoMan/1.0 (Windows NT 10.0; Win64; x64)");
+    apply_ssl_settings(curl);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36");
 
     CURLcode res = curl_easy_perform(curl);
     if (res == CURLE_OK) {
@@ -88,9 +95,8 @@ HttpResponse HttpClient::post(const std::string& url,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp.body);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_sec);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "FactoMan/1.0 (Windows NT 10.0; Win64; x64)");
+    apply_ssl_settings(curl);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36");
 
     CURLcode res = curl_easy_perform(curl);
     if (res == CURLE_OK) {
@@ -129,9 +135,8 @@ HttpResponse HttpClient::patch(const std::string& url,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp.body);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_sec);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "FactoMan/1.0 (Windows NT 10.0; Win64; x64)");
+    apply_ssl_settings(curl);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36");
 
     CURLcode res = curl_easy_perform(curl);
     if (res == CURLE_OK) {
