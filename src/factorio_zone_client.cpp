@@ -29,6 +29,18 @@ void FactorioZoneClient::set_callbacks(LogCallback on_log,
     on_slot_ = std::move(on_slot);
 }
 
+void FactorioZoneClient::set_user_token(const std::string& user_token) {
+    std::string secret;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        user_token_ = user_token;
+        secret = visit_secret_;
+    }
+    if (!secret.empty() && !user_token.empty()) {
+        login(user_token);
+    }
+}
+
 void FactorioZoneClient::start_websocket_thread() {
     if (running_.load()) return;
     running_.store(true);
@@ -60,6 +72,10 @@ long long FactorioZoneClient::get_launch_id() const {
 FzState FactorioZoneClient::get_state() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return state_;
+}
+
+bool FactorioZoneClient::is_logged_in() const {
+    return is_logged_in_.load();
 }
 
 void FactorioZoneClient::set_state(FzState new_state, const std::string& message) {
@@ -99,7 +115,7 @@ bool FactorioZoneClient::login(const std::string& user_token) {
     }
 
     if (secret.empty()) {
-        std::cout << "[FZ] Waiting for visitSecret before login...\n";
+        std::cout << "[FZ] Waiting for fresh visitSecret before login...\n";
         return false;
     }
 
@@ -114,9 +130,12 @@ bool FactorioZoneClient::login(const std::string& user_token) {
 
     auto resp = HttpClient::post("https://factorio.zone/api/user/login", body, headers);
     if (resp.success) {
+        is_logged_in_.store(true);
         set_state(FzState::LOGGED_IN, "Logged in successfully");
+        std::cout << "[FZ] Login successful: " << resp.body << "\n";
         return true;
     } else {
+        is_logged_in_.store(false);
         std::cerr << "[FZ] Login failed: " << resp.error << " (HTTP " << resp.status_code << "): " << resp.body << "\n";
         return false;
     }
@@ -127,14 +146,25 @@ bool FactorioZoneClient::start_instance(const std::string& region,
                                        const std::string& version,
                                        const std::string& options_json) {
     std::string secret;
+    std::string u_token;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         secret = visit_secret_;
+        u_token = user_token_;
     }
 
     if (secret.empty()) {
-        std::cerr << "[FZ] Cannot start: visitSecret empty\n";
+        std::cerr << "[FZ] Cannot start: visitSecret empty. Reconnecting to factorio.zone...\n";
+        set_state(FzState::ERROR_STATE, "Not connected to factorio.zone yet. Please wait...");
         return false;
+    }
+
+    if (!is_logged_in_.load()) {
+        std::cout << "[FZ] Not logged in yet, attempting login before start...\n";
+        if (!login(u_token)) {
+            set_state(FzState::ERROR_STATE, "Login failed. Check your userToken.");
+            return false;
+        }
     }
 
     std::string body = "options=" + HttpClient::url_encode(options_json)
@@ -152,6 +182,31 @@ bool FactorioZoneClient::start_instance(const std::string& region,
     set_state(FzState::STARTING, "Starting server instance...");
     auto resp = HttpClient::post("https://factorio.zone/api/instance/start", body, headers);
     if (resp.success) {
+        std::cout << "[FZ] Start instance response: " << resp.body << "\n";
+        try {
+            auto j = json::parse(resp.body);
+            if (j.contains("launchId")) {
+                long long lid = j["launchId"].get<long long>();
+                LaunchIdCallback lid_cb;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    launch_id_ = lid;
+                    lid_cb = on_launch_id_;
+                }
+                if (lid_cb) lid_cb(lid);
+            }
+            if (j.contains("socket")) {
+                std::string sock = j["socket"].get<std::string>();
+                IpCallback ip_cb;
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    server_ip_ = sock;
+                    state_ = FzState::RUNNING;
+                    ip_cb = on_ip_;
+                }
+                if (ip_cb) ip_cb(sock);
+            }
+        } catch (...) {}
         return true;
     } else {
         set_state(FzState::ERROR_STATE, "Failed to start: " + resp.body);
@@ -170,6 +225,7 @@ bool FactorioZoneClient::stop_instance() {
 
     if (secret.empty() || lid == 0) {
         std::cerr << "[FZ] Cannot stop: visitSecret or launchId missing\n";
+        set_state(FzState::ERROR_STATE, "Cannot stop: No active launchId found");
         return false;
     }
 
@@ -185,6 +241,12 @@ bool FactorioZoneClient::stop_instance() {
     set_state(FzState::STOPPING, "Stopping server instance...");
     auto resp = HttpClient::post("https://factorio.zone/api/instance/stop", body, headers);
     if (resp.success) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            server_ip_ = "";
+            launch_id_ = 0;
+            state_ = FzState::OFFLINE;
+        }
         set_state(FzState::OFFLINE, "Server stopped");
         return true;
     } else {
@@ -223,6 +285,11 @@ bool FactorioZoneClient::send_console(const std::string& command) {
 
 void FactorioZoneClient::ws_worker_loop() {
     while (running_.load()) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            visit_secret_ = "";
+            is_logged_in_.store(false);
+        }
         set_state(FzState::CONNECTING, "Connecting to factorio.zone WebSocket...");
 
         CURL* curl = curl_easy_init();
@@ -234,6 +301,9 @@ void FactorioZoneClient::ws_worker_loop() {
         curl_easy_setopt(curl, CURLOPT_URL, "wss://factorio.zone/ws");
         curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 2L);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36");
+        curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+        curl_easy_setopt(curl, CURLOPT_TCP_KEEPIDLE, 15L);
+        curl_easy_setopt(curl, CURLOPT_TCP_KEEPINTVL, 10L);
 
 #if defined(CURLSSLOPT_NATIVE_CA)
         curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
@@ -249,10 +319,10 @@ void FactorioZoneClient::ws_worker_loop() {
         CURLcode res = curl_easy_perform(curl);
         if (res != CURLE_OK) {
             std::cerr << "[FZ WS] Connect failed: " << curl_easy_strerror(res) << "\n";
-            set_state(FzState::ERROR_STATE, "WS connect error");
+            set_state(FzState::ERROR_STATE, "WS connect error: " + std::string(curl_easy_strerror(res)));
             if (headers) curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
-            std::this_thread::sleep_for(std::chrono::seconds(3));
+            std::this_thread::sleep_for(std::chrono::seconds(2));
             continue;
         }
 
@@ -260,13 +330,26 @@ void FactorioZoneClient::ws_worker_loop() {
 
         char recv_buf[8192];
         std::string accumulated_data;
+        auto last_ping_time = std::chrono::steady_clock::now();
 
         while (running_.load()) {
+            // Send periodic WebSocket PING every 15 seconds to keep connection alive
+            auto now = std::chrono::steady_clock::now();
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_ping_time).count() >= 15) {
+                size_t sent = 0;
+                curl_ws_send(curl, "ping", 4, &sent, 0, CURLWS_PING);
+                last_ping_time = now;
+            }
+
             size_t rlen = 0;
             const struct curl_ws_frame* meta = nullptr;
             res = curl_ws_recv(curl, recv_buf, sizeof(recv_buf), &rlen, &meta);
 
             if (res == CURLE_OK && rlen > 0) {
+                // Ignore PING and PONG frames from JSON parser
+                if (meta && (meta->flags & (CURLWS_PING | CURLWS_PONG))) {
+                    continue;
+                }
                 accumulated_data.append(recv_buf, rlen);
                 process_raw_ws_data(accumulated_data);
             } else if (res == CURLE_AGAIN) {
@@ -279,6 +362,12 @@ void FactorioZoneClient::ws_worker_loop() {
 
         if (headers) curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
+
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            visit_secret_ = "";
+            is_logged_in_.store(false);
+        }
 
         if (running_.load()) {
             std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -361,22 +450,27 @@ void FactorioZoneClient::parse_single_json(const std::string& json_str) {
             }
             if (sec_cb) sec_cb(secret);
 
-            // Automatically log in once visitSecret is received
+            // Automatically log in with the new visitSecret immediately
             if (!u_token.empty()) {
                 login(u_token);
             }
-        } else if (type == "slot") {
-            std::string slot = j.value("slot", "");
-            std::string region = j.value("region", "");
-            std::string version = j.value("version", "");
-            SlotCallback slot_cb;
+        } else if (type == "running") {
+            // Factorio.zone sends: {"type":"running","launchId":1201670,"socket":"15.252.100.44:25667"}
+            long long lid = j.value("launchId", 0LL);
+            std::string socket = j.value("socket", "");
+            IpCallback ip_cb;
+            LaunchIdCallback lid_cb;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                slot_cb = on_slot_;
+                if (lid > 0) launch_id_ = lid;
+                if (!socket.empty()) server_ip_ = socket;
+                state_ = FzState::RUNNING;
+                ip_cb = on_ip_;
+                lid_cb = on_launch_id_;
             }
-            if (slot_cb) slot_cb(slot, region, version);
-        } else if (type == "idle") {
-            set_state(FzState::OFFLINE, "Server is offline (Ready)");
+            if (lid > 0 && lid_cb) lid_cb(lid);
+            if (!socket.empty() && ip_cb) ip_cb(socket);
+            set_state(FzState::RUNNING, "Server running at " + socket);
         } else if (type == "starting") {
             long long lid = j.value("launchId", 0LL);
             LaunchIdCallback lid_cb;
@@ -388,6 +482,24 @@ void FactorioZoneClient::parse_single_json(const std::string& json_str) {
             }
             if (lid_cb) lid_cb(lid);
             set_state(FzState::STARTING, "Starting instance (Launch #" + std::to_string(lid) + ")");
+        } else if (type == "idle") {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                server_ip_ = "";
+                launch_id_ = 0;
+                state_ = FzState::OFFLINE;
+            }
+            set_state(FzState::OFFLINE, "Server is offline (Ready)");
+        } else if (type == "slot") {
+            std::string slot = j.value("slot", "");
+            std::string region = j.value("region", "");
+            std::string version = j.value("version", "");
+            SlotCallback slot_cb;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                slot_cb = on_slot_;
+            }
+            if (slot_cb) slot_cb(slot, region, version);
         } else if (type == "info" || type == "log") {
             std::string line = j.value("line", "");
             long long lid = j.value("launchId", 0LL);
@@ -420,7 +532,7 @@ void FactorioZoneClient::parse_single_json(const std::string& json_str) {
                     ip_cb = on_ip_;
                 }
                 if (ip_cb) ip_cb(ip);
-                set_state(FzState::RUNNING, "Server is running at " + ip);
+                set_state(FzState::RUNNING, "Server running at " + ip);
             }
 
             LogCallback log_cb;

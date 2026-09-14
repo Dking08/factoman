@@ -26,10 +26,23 @@ void MainWindow::show(int argc, char** argv) {
 }
 
 void MainWindow::setup_ui(int w, int h) {
+    // Dark mode colors
+    Fl_Color bg_main   = fl_rgb_color(32, 35, 42);
+    Fl_Color bg_dark   = fl_rgb_color(22, 24, 28);
+    Fl_Color bg_btn    = fl_rgb_color(52, 58, 68);
+    Fl_Color fg_text   = fl_rgb_color(230, 230, 230);
+    Fl_Color fg_muted  = fl_rgb_color(165, 175, 190);
+    Fl_Color col_start = fl_rgb_color(36, 128, 68);
+    Fl_Color col_stop  = fl_rgb_color(158, 44, 44);
+
     win_ = new Fl_Window(w, h, "FactoMan - Factorio Server Manager");
+    win_->color(bg_main);
 
     // 1. Menu Bar
     menu_bar_ = new Fl_Menu_Bar(0, 0, w, 24);
+    menu_bar_->color(bg_dark);
+    menu_bar_->textcolor(fg_text);
+    menu_bar_->box(FL_FLAT_BOX);
     menu_bar_->add("&File/&Settings...", FL_CTRL + 's', cb_open_settings, this);
     menu_bar_->add("&File/E&xit", FL_CTRL + 'q', cb_menu_exit, this);
     menu_bar_->add("&Server/&Start Server", 0, cb_start_server, this);
@@ -37,36 +50,61 @@ void MainWindow::setup_ui(int w, int h) {
     menu_bar_->add("&Server/&Clear Logs", 0, cb_clear_logs, this);
     menu_bar_->add("&Help/&About", 0, cb_menu_about, this);
 
-    // 2. Status and IP Row
-    int cur_y = 34;
-    out_status_ = new Fl_Output(65, cur_y, 220, 26, "Status:");
-    out_status_->value("Offline");
+    // 2. Status & IP Row
+    int cur_y = 36;
+    out_status_ = new Fl_Output(70, cur_y, 200, 26, "Status:");
+    out_status_->box(FL_THIN_DOWN_BOX);
+    out_status_->color(bg_dark);
+    out_status_->textcolor(fg_text);
+    out_status_->labelcolor(fg_text);
+    out_status_->value("Offline (Connecting...)");
 
-    out_ip_ = new Fl_Output(350, cur_y, 200, 26, "Server IP:");
+    out_ip_ = new Fl_Output(350, cur_y, 205, 26, "Server IP:");
+    out_ip_->box(FL_THIN_DOWN_BOX);
+    out_ip_->color(bg_dark);
+    out_ip_->textcolor(fl_rgb_color(100, 220, 255));
+    out_ip_->textfont(FL_COURIER_BOLD);
+    out_ip_->labelcolor(fg_text);
     out_ip_->value("---.---.---.---:-----");
 
-    btn_copy_ip_ = new Fl_Button(560, cur_y, 115, 26, "Copy IP");
+    btn_copy_ip_ = new Fl_Button(565, cur_y, 115, 26, "Copy IP");
+    btn_copy_ip_->box(FL_FLAT_BOX);
+    btn_copy_ip_->color(bg_btn);
+    btn_copy_ip_->labelcolor(FL_WHITE);
     btn_copy_ip_->callback(cb_copy_ip, this);
 
     // 3. Action Buttons Row
     cur_y += 34;
     btn_start_ = new Fl_Button(15, cur_y, 130, 30, "Start Server");
+    btn_start_->box(FL_FLAT_BOX);
+    btn_start_->color(col_start);
+    btn_start_->labelcolor(FL_WHITE);
     btn_start_->callback(cb_start_server, this);
 
     btn_stop_ = new Fl_Button(155, cur_y, 130, 30, "Stop Server");
+    btn_stop_->box(FL_FLAT_BOX);
+    btn_stop_->color(col_stop);
+    btn_stop_->labelcolor(FL_WHITE);
     btn_stop_->callback(cb_stop_server, this);
     btn_stop_->deactivate();
 
     btn_clear_logs_ = new Fl_Button(295, cur_y, 100, 30, "Clear Logs");
+    btn_clear_logs_->box(FL_FLAT_BOX);
+    btn_clear_logs_->color(bg_btn);
+    btn_clear_logs_->labelcolor(FL_WHITE);
     btn_clear_logs_->callback(cb_clear_logs, this);
 
-    btn_settings_ = new Fl_Button(560, cur_y, 115, 30, "Settings...");
+    btn_settings_ = new Fl_Button(565, cur_y, 115, 30, "Settings...");
+    btn_settings_->box(FL_FLAT_BOX);
+    btn_settings_->color(bg_btn);
+    btn_settings_->labelcolor(FL_WHITE);
     btn_settings_->callback(cb_open_settings, this);
 
-    // 4. Details Label
+    // 4. Details Label (Shows Region, Slot, Ver. NO launchId before starting!)
     cur_y += 38;
     box_details_ = new Fl_Box(15, cur_y, w - 30, 18, "Region: ap-south-1 | Slot: slot1 | Ver: 2.1.17");
     box_details_->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+    box_details_->labelcolor(fg_muted);
     box_details_->labelsize(12);
 
     // 5. Console Display
@@ -75,31 +113,43 @@ void MainWindow::setup_ui(int w, int h) {
     buf_console_ = new Fl_Text_Buffer();
     txt_console_ = new Fl_Text_Display(15, cur_y, w - 30, console_h);
     txt_console_->buffer(buf_console_);
+    txt_console_->box(FL_THIN_DOWN_BOX);
+    txt_console_->color(fl_rgb_color(16, 18, 22));
+    txt_console_->textcolor(fl_rgb_color(150, 240, 160));
     txt_console_->textfont(FL_COURIER);
     txt_console_->textsize(12);
 
     // 6. Command Input Row
     cur_y += console_h + 8;
     inp_command_ = new Fl_Input(85, cur_y, w - 195, 26, "Command:");
+    inp_command_->box(FL_THIN_DOWN_BOX);
+    inp_command_->color(bg_dark);
+    inp_command_->textcolor(FL_WHITE);
+    inp_command_->labelcolor(fg_text);
     inp_command_->textfont(FL_COURIER);
     inp_command_->textsize(12);
     inp_command_->when(FL_WHEN_ENTER_KEY);
     inp_command_->callback(cb_send_console, this);
 
     btn_send_command_ = new Fl_Button(w - 100, cur_y, 85, 26, "Send");
+    btn_send_command_->box(FL_FLAT_BOX);
+    btn_send_command_->color(bg_btn);
+    btn_send_command_->labelcolor(FL_WHITE);
     btn_send_command_->callback(cb_send_console, this);
 
     // 7. Status Bar
     cur_y += 34;
-    status_bar_ = new Fl_Box(15, cur_y, w - 30, 20, "Ready");
+    status_bar_ = new Fl_Box(15, cur_y, w - 30, 22, "Initializing...");
     status_bar_->box(FL_THIN_DOWN_BOX);
+    status_bar_->color(bg_dark);
+    status_bar_->labelcolor(fg_muted);
     status_bar_->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
     status_bar_->labelsize(11);
 
     win_->end();
     win_->resizable(txt_console_);
 
-    settings_dialog_ = std::make_unique<SettingsDialog>(500, 340, "FactoMan Settings");
+    settings_dialog_ = std::make_unique<SettingsDialog>(510, 360, "FactoMan Settings");
 }
 
 void MainWindow::setup_clients() {
@@ -152,16 +202,16 @@ void MainWindow::setup_clients() {
     sync_client_->configure(config_.supabase_url, config_.supabase_key, config_.sync_interval_sec);
     sync_client_->start_polling();
 
-    // Start WebSocket
-    fz_client_->login(config_.user_token);
+    // Configure user token and start WebSocket
+    fz_client_->set_user_token(config_.user_token);
     fz_client_->start_websocket_thread();
 
     append_log("[FactoMan] Application started.");
-    append_log("[FactoMan] Connecting to factorio.zone...");
+    append_log("[FactoMan] Connecting to factorio.zone WebSocket...");
     if (sync_client_->is_configured()) {
-        append_log("[FactoMan] Supabase Sync is active (" + config_.player_nick + ").");
+        append_log("[FactoMan] Supabase Sync active (" + config_.player_nick + ").");
     } else {
-        append_log("[FactoMan] Note: Supabase Sync is not configured yet. Configure in Settings.");
+        append_log("[FactoMan] Supabase Sync not configured. Configure via Settings.");
     }
 }
 
@@ -184,8 +234,16 @@ void MainWindow::process_pending_events() {
                 out_status_->value("Running");
                 update_controls_state(FzState::RUNNING);
 
+                // Update details with LaunchID when running
+                long long lid = fz_client_->get_launch_id();
+                std::string det = "Region: " + config_.region + " | Slot: " + config_.save_slot +
+                                  " | Ver: " + config_.factorio_version;
+                if (lid > 0) det += " | Launch ID: #" + std::to_string(lid);
+                box_details_->copy_label(det.c_str());
+
+                // Broadcast to Supabase
                 if (sync_client_->is_configured()) {
-                    sync_client_->publish_state("RUNNING", ev.str1, fz_client_->get_launch_id(),
+                    sync_client_->publish_state("RUNNING", ev.str1, lid,
                                                 config_.player_nick, config_.region, config_.save_slot, config_.factorio_version);
                 }
                 break;
@@ -198,24 +256,35 @@ void MainWindow::process_pending_events() {
                 switch (ev.fz_state) {
                     case FzState::OFFLINE: st_str = "Offline (Ready)"; break;
                     case FzState::CONNECTING: st_str = "Connecting..."; break;
-                    case FzState::CONNECTED: st_str = "Connected"; break;
+                    case FzState::CONNECTED: st_str = "Connected (Logging in...)"; break;
                     case FzState::LOGGED_IN: st_str = "Ready"; break;
-                    case FzState::STARTING: st_str = "Starting..."; break;
+                    case FzState::STARTING: st_str = "Starting Server..."; break;
                     case FzState::RUNNING: st_str = "Running"; break;
-                    case FzState::STOPPING: st_str = "Stopping..."; break;
+                    case FzState::STOPPING: st_str = "Stopping Server..."; break;
                     case FzState::ERROR_STATE: st_str = "Error"; break;
                 }
                 out_status_->value(st_str.c_str());
                 if (!ev.str1.empty()) {
                     status_bar_->copy_label(ev.str1.c_str());
                 }
+
+                // If offline, reset details to hide launch ID
+                if (ev.fz_state == FzState::OFFLINE) {
+                    std::string det = "Region: " + config_.region + " | Slot: " + config_.save_slot +
+                                      " | Ver: " + config_.factorio_version;
+                    box_details_->copy_label(det.c_str());
+                    out_ip_->value("---.---.---.---:-----");
+                }
                 break;
             }
 
             case GuiEvent::LAUNCH_ID: {
-                std::string det = "Region: " + config_.region + " | Slot: " + config_.save_slot +
-                                  " | LaunchID: #" + std::to_string(ev.num);
-                box_details_->copy_label(det.c_str());
+                long long lid = ev.num;
+                if (lid > 0 && (fz_client_->get_state() == FzState::STARTING || fz_client_->get_state() == FzState::RUNNING)) {
+                    std::string det = "Region: " + config_.region + " | Slot: " + config_.save_slot +
+                                      " | Ver: " + config_.factorio_version + " | Launch ID: #" + std::to_string(lid);
+                    box_details_->copy_label(det.c_str());
+                }
                 break;
             }
 
@@ -223,8 +292,13 @@ void MainWindow::process_pending_events() {
                 if (!ev.str1.empty()) config_.save_slot = ev.str1;
                 if (!ev.str2.empty()) config_.region = ev.str2;
                 if (!ev.str3.empty()) config_.factorio_version = ev.str3;
+
                 std::string det = "Region: " + config_.region + " | Slot: " + config_.save_slot +
                                   " | Ver: " + config_.factorio_version;
+                long long lid = fz_client_->get_launch_id();
+                if (lid > 0 && (fz_client_->get_state() == FzState::STARTING || fz_client_->get_state() == FzState::RUNNING)) {
+                    det += " | Launch ID: #" + std::to_string(lid);
+                }
                 box_details_->copy_label(det.c_str());
                 break;
             }
@@ -256,11 +330,17 @@ void MainWindow::process_pending_events() {
                     update_controls_state(FzState::RUNNING);
                     if (rs.launch_id > 0) {
                         fz_client_->set_server_details(rs.server_ip, rs.launch_id, FzState::RUNNING);
+                        std::string det = "Region: " + rs.region + " | Slot: " + rs.save_slot +
+                                          " | Ver: " + rs.version + " | Launch ID: #" + std::to_string(rs.launch_id);
+                        box_details_->copy_label(det.c_str());
                     }
                 } else if (rs.status == "OFFLINE") {
-                    out_status_->value("Offline");
+                    out_status_->value("Offline (Ready)");
                     update_controls_state(FzState::OFFLINE);
                     out_ip_->value("---.---.---.---:-----");
+                    std::string det = "Region: " + config_.region + " | Slot: " + config_.save_slot +
+                                      " | Ver: " + config_.factorio_version;
+                    box_details_->copy_label(det.c_str());
                 }
 
                 append_log("[Sync] " + ss.str());
@@ -290,7 +370,7 @@ void MainWindow::update_controls_state(FzState state) {
 
 void MainWindow::cb_start_server(Fl_Widget*, void* data) {
     auto* self = static_cast<MainWindow*>(data);
-    self->append_log("[Action] Starting server...");
+    self->append_log("[Action] Requesting server start...");
     self->btn_start_->deactivate();
 
     std::thread([self]() {
@@ -371,10 +451,14 @@ void MainWindow::cb_open_settings(Fl_Widget*, void* data) {
 
         std::string det = "Region: " + self->config_.region + " | Slot: " + self->config_.save_slot +
                           " | Ver: " + self->config_.factorio_version;
+        long long lid = self->fz_client_->get_launch_id();
+        if (lid > 0 && (self->fz_client_->get_state() == FzState::STARTING || self->fz_client_->get_state() == FzState::RUNNING)) {
+            det += " | Launch ID: #" + std::to_string(lid);
+        }
         self->box_details_->copy_label(det.c_str());
 
         self->sync_client_->configure(self->config_.supabase_url, self->config_.supabase_key, self->config_.sync_interval_sec);
-        self->fz_client_->login(self->config_.user_token);
+        self->fz_client_->set_user_token(self->config_.user_token);
 
         self->append_log("[Settings] Configuration updated.");
     });
