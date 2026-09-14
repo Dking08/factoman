@@ -132,7 +132,6 @@ bool FactorioZoneClient::login(const std::string& user_token) {
     if (resp.success) {
         is_logged_in_.store(true);
         set_state(FzState::LOGGED_IN, "Logged in successfully");
-        std::cout << "[FZ] Login successful: " << resp.body << "\n";
         return true;
     } else {
         is_logged_in_.store(false);
@@ -302,8 +301,8 @@ void FactorioZoneClient::ws_worker_loop() {
         curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 2L);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36");
         curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
-        curl_easy_setopt(curl, CURLOPT_TCP_KEEPIDLE, 15L);
-        curl_easy_setopt(curl, CURLOPT_TCP_KEEPINTVL, 10L);
+        curl_easy_setopt(curl, CURLOPT_TCP_KEEPIDLE, 30L);
+        curl_easy_setopt(curl, CURLOPT_TCP_KEEPINTVL, 15L);
 
 #if defined(CURLSSLOPT_NATIVE_CA)
         curl_easy_setopt(curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
@@ -330,15 +329,15 @@ void FactorioZoneClient::ws_worker_loop() {
 
         char recv_buf[8192];
         std::string accumulated_data;
-        auto last_ping_time = std::chrono::steady_clock::now();
+        auto last_traffic_time = std::chrono::steady_clock::now();
 
         while (running_.load()) {
-            // Send periodic WebSocket PING every 15 seconds to keep connection alive
+            // Keepalive ping every 15 seconds to ensure connection stability
             auto now = std::chrono::steady_clock::now();
-            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_ping_time).count() >= 15) {
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - last_traffic_time).count() >= 15) {
                 size_t sent = 0;
                 curl_ws_send(curl, "ping", 4, &sent, 0, CURLWS_PING);
-                last_ping_time = now;
+                last_traffic_time = now;
             }
 
             size_t rlen = 0;
@@ -346,6 +345,7 @@ void FactorioZoneClient::ws_worker_loop() {
             res = curl_ws_recv(curl, recv_buf, sizeof(recv_buf), &rlen, &meta);
 
             if (res == CURLE_OK && rlen > 0) {
+                last_traffic_time = std::chrono::steady_clock::now();
                 // Ignore PING and PONG frames from JSON parser
                 if (meta && (meta->flags & (CURLWS_PING | CURLWS_PONG))) {
                     continue;

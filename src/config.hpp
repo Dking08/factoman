@@ -11,7 +11,7 @@ struct AppConfig {
     std::string save_slot = "slot1";
     std::string factorio_version = "2.1.17";
     std::string options_json = "{\"elevated-rails\":true,\"quality\":true,\"recycler\":true,\"space-age\":true}";
-    int sync_interval_sec = 3;
+    int sync_interval_sec = 6;
 
     static AppConfig load(const std::string& filepath = "config.json");
     bool save(const std::string& filepath = "config.json") const;
