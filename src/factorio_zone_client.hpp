@@ -57,6 +57,7 @@ public:
     void set_state(FzState new_state, const std::string& message = "");
 
     void set_server_details(const std::string& ip, long long launch_id, FzState state);
+    void cancel_queue();
 
 private:
     void ws_worker_loop();
@@ -65,6 +66,7 @@ private:
 
     std::atomic<bool> running_{false};
     std::atomic<bool> is_logged_in_{false};
+    std::atomic<bool> cancel_queue_{false};
     std::thread ws_thread_;
     mutable std::mutex mutex_;
 

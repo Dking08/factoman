@@ -19,11 +19,14 @@ INSERT INTO public.server_state (id, status, server_ip, launch_id, updated_by, u
 VALUES (1, 'OFFLINE', '', 0, 'Initial Setup', NOW())
 ON CONFLICT (id) DO NOTHING;
 
--- 3. Enable Row Level Security (RLS)
+-- 3. Enable Row Level Security (RLS) for server_state
 ALTER TABLE public.server_state ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow anon select on server_state" ON public.server_state;
+DROP POLICY IF EXISTS "Allow anon update on server_state" ON public.server_state;
+DROP POLICY IF EXISTS "Allow anon insert on server_state" ON public.server_state;
+
 -- 4. Create policies allowing anonymous reading and updating
--- (Allows all friends with the anon public API key to read and update server state)
 CREATE POLICY "Allow anon select on server_state"
     ON public.server_state
     FOR SELECT
@@ -41,4 +44,38 @@ CREATE POLICY "Allow anon insert on server_state"
     ON public.server_state
     FOR INSERT
     TO anon
+    WITH CHECK (true);
+
+-- 5. Create user_tokens table for key-to-token lookups (e.g. "bablu" -> "Absfpypdx6XFjueps4TgJDjF")
+CREATE TABLE IF NOT EXISTS public.user_tokens (
+    key TEXT PRIMARY KEY,
+    token TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 6. Enable Row Level Security (RLS) for user_tokens
+ALTER TABLE public.user_tokens ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow anon select on user_tokens" ON public.user_tokens;
+DROP POLICY IF EXISTS "Allow anon insert on user_tokens" ON public.user_tokens;
+DROP POLICY IF EXISTS "Allow anon update on user_tokens" ON public.user_tokens;
+DROP POLICY IF EXISTS "Allow anon insert/update on user_tokens" ON public.user_tokens;
+
+CREATE POLICY "Allow anon select on user_tokens"
+    ON public.user_tokens
+    FOR SELECT
+    TO anon
+    USING (true);
+
+CREATE POLICY "Allow anon insert on user_tokens"
+    ON public.user_tokens
+    FOR INSERT
+    TO anon
+    WITH CHECK (true);
+
+CREATE POLICY "Allow anon update on user_tokens"
+    ON public.user_tokens
+    FOR UPDATE
+    TO anon
+    USING (true)
     WITH CHECK (true);
