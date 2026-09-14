@@ -1,0 +1,13 @@
+# Build directories & objects
+build/CMakeFiles/
+build/*.ninja*
+build/*.cmake
+build/CMakeCache.txt
+build/*.o
+build/*.obj
+
+config.json
+
+# Others
+misc-visitors/
+*.post
