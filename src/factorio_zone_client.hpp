@@ -25,6 +25,7 @@ public:
     using StatusCallback = std::function<void(FzState state, const std::string& message)>;
     using LaunchIdCallback = std::function<void(long long launch_id)>;
     using SecretCallback = std::function<void(const std::string& secret)>;
+    using SlotCallback = std::function<void(const std::string& slot, const std::string& region, const std::string& version)>;
 
     FactorioZoneClient();
     ~FactorioZoneClient();
@@ -33,8 +34,10 @@ public:
                       IpCallback on_ip,
                       StatusCallback on_status,
                       LaunchIdCallback on_launch_id,
-                      SecretCallback on_secret);
+                      SecretCallback on_secret,
+                      SlotCallback on_slot = nullptr);
 
+    void set_user_token(const std::string& user_token);
     void start_websocket_thread();
     void stop_websocket_thread();
 
@@ -50,6 +53,7 @@ public:
     std::string get_server_ip() const;
     long long get_launch_id() const;
     FzState get_state() const;
+    bool is_logged_in() const;
     void set_state(FzState new_state, const std::string& message = "");
 
     void set_server_details(const std::string& ip, long long launch_id, FzState state);
@@ -60,6 +64,7 @@ private:
     void parse_single_json(const std::string& json_str);
 
     std::atomic<bool> running_{false};
+    std::atomic<bool> is_logged_in_{false};
     std::thread ws_thread_;
     mutable std::mutex mutex_;
 
@@ -74,4 +79,5 @@ private:
     StatusCallback on_status_;
     LaunchIdCallback on_launch_id_;
     SecretCallback on_secret_;
+    SlotCallback on_slot_;
 };
