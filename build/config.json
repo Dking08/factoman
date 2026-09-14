@@ -1,0 +1,11 @@
+{
+    "factorio_version": "2.1.17",
+    "options_json": "{\"elevated-rails\":true,\"quality\":true,\"recycler\":true,\"space-age\":true}",
+    "player_nick": "Player1",
+    "region": "ap-south-1",
+    "save_slot": "slot1",
+    "supabase_key": "",
+    "supabase_url": "",
+    "sync_interval_sec": 3,
+    "user_token": "Absfpypdx6XFjueps4TgJDjF"
+}
