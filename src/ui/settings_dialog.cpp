@@ -4,60 +4,70 @@
 SettingsDialog::SettingsDialog(int w, int h, const char* title) {
     win_ = new Fl_Window(w, h, title);
     win_->set_modal();
-    win_->color(FL_GRAY);
+    // Dark mode palette
+    Fl_Color bg_color = fl_rgb_color(34, 37, 43);
+    Fl_Color input_bg = fl_rgb_color(24, 26, 30);
+    Fl_Color text_color = fl_rgb_color(230, 230, 230);
+    Fl_Color btn_color = fl_rgb_color(56, 62, 74);
+
+    win_->color(bg_color);
 
     int start_y = 20;
-    int label_w = 140;
-    int input_w = w - label_w - 40;
-    int input_h = 24;
+    int label_w = 145;
+    int input_w = w - label_w - 35;
+    int input_h = 25;
     int gap = 34;
 
-    inp_token_ = new Fl_Input(label_w + 20, start_y, input_w, input_h, "Factorio User Token:");
-    inp_token_->align(FL_ALIGN_LEFT);
-    inp_token_->box(FL_DOWN_BOX);
+    auto style_input = [input_bg, text_color](Fl_Input* inp) {
+        inp->align(FL_ALIGN_LEFT);
+        inp->box(FL_THIN_DOWN_BOX);
+        inp->color(input_bg);
+        inp->textcolor(text_color);
+        inp->labelcolor(text_color);
+        inp->textsize(12);
+    };
+
+    inp_token_ = new Fl_Input(label_w + 15, start_y, input_w, input_h, "Factorio User Token:");
+    style_input(inp_token_);
 
     start_y += gap;
-    inp_nick_ = new Fl_Input(label_w + 20, start_y, input_w, input_h, "Player Nickname:");
-    inp_nick_->align(FL_ALIGN_LEFT);
-    inp_nick_->box(FL_DOWN_BOX);
+    inp_nick_ = new Fl_Input(label_w + 15, start_y, input_w, input_h, "Player Nickname:");
+    style_input(inp_nick_);
 
     start_y += gap;
-    inp_supabase_url_ = new Fl_Input(label_w + 20, start_y, input_w, input_h, "Supabase URL:");
-    inp_supabase_url_->align(FL_ALIGN_LEFT);
-    inp_supabase_url_->box(FL_DOWN_BOX);
+    inp_supabase_url_ = new Fl_Input(label_w + 15, start_y, input_w, input_h, "Supabase URL:");
+    style_input(inp_supabase_url_);
 
     start_y += gap;
-    inp_supabase_key_ = new Fl_Input(label_w + 20, start_y, input_w, input_h, "Supabase Anon Key:");
-    inp_supabase_key_->align(FL_ALIGN_LEFT);
-    inp_supabase_key_->box(FL_DOWN_BOX);
+    inp_supabase_key_ = new Fl_Input(label_w + 15, start_y, input_w, input_h, "Supabase Anon Key:");
+    style_input(inp_supabase_key_);
 
     start_y += gap;
-    inp_region_ = new Fl_Input(label_w + 20, start_y, input_w, input_h, "Server Region:");
-    inp_region_->align(FL_ALIGN_LEFT);
-    inp_region_->box(FL_DOWN_BOX);
+    inp_region_ = new Fl_Input(label_w + 15, start_y, input_w, input_h, "Server Region:");
+    style_input(inp_region_);
 
     start_y += gap;
-    inp_slot_ = new Fl_Input(label_w + 20, start_y, input_w, input_h, "Save Slot:");
-    inp_slot_->align(FL_ALIGN_LEFT);
-    inp_slot_->box(FL_DOWN_BOX);
+    inp_slot_ = new Fl_Input(label_w + 15, start_y, input_w, input_h, "Save Slot:");
+    style_input(inp_slot_);
 
     start_y += gap;
-    inp_version_ = new Fl_Input(label_w + 20, start_y, input_w, input_h, "Factorio Version:");
-    inp_version_->align(FL_ALIGN_LEFT);
-    inp_version_->box(FL_DOWN_BOX);
+    inp_version_ = new Fl_Input(label_w + 15, start_y, input_w, input_h, "Factorio Version:");
+    style_input(inp_version_);
 
-    start_y += gap + 10;
+    start_y += gap + 12;
     int btn_w = 100;
     int btn_h = 28;
     int total_btns = btn_w * 2 + 20;
     int btn_x = (w - total_btns) / 2;
 
     btn_save_ = new Fl_Button(btn_x, start_y, btn_w, btn_h, "Save");
-    btn_save_->box(FL_UP_BOX);
+    btn_save_->color(fl_rgb_color(40, 130, 70));
+    btn_save_->labelcolor(FL_WHITE);
     btn_save_->callback(cb_save, this);
 
     btn_cancel_ = new Fl_Button(btn_x + btn_w + 20, start_y, btn_w, btn_h, "Cancel");
-    btn_cancel_->box(FL_UP_BOX);
+    btn_cancel_->color(btn_color);
+    btn_cancel_->labelcolor(FL_WHITE);
     btn_cancel_->callback(cb_cancel, this);
 
     win_->end();
