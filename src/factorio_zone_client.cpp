@@ -166,11 +166,7 @@ bool FactorioZoneClient::start_instance(const std::string& region,
         }
     }
 
-    std::string body = "options=" + HttpClient::url_encode(options_json)
-                     + "&region=" + HttpClient::url_encode(region)
-                     + "&save=" + HttpClient::url_encode(save_slot)
-                     + "&version=" + HttpClient::url_encode(version)
-                     + "&visitSecret=" + HttpClient::url_encode(secret);
+    cancel_queue_.store(false);
 
     std::vector<std::string> headers = {
         "Content-Type: application/x-www-form-urlencoded",
@@ -178,42 +174,120 @@ bool FactorioZoneClient::start_instance(const std::string& region,
         "Referer: https://factorio.zone/"
     };
 
-    set_state(FzState::STARTING, "Starting server instance...");
-    auto resp = HttpClient::post("https://factorio.zone/api/instance/start", body, headers);
-    if (resp.success) {
+    long long turn_time_to_send = 0;
+
+    while (running_.load() && !cancel_queue_.load()) {
+        std::string body = "options=" + HttpClient::url_encode(options_json)
+                         + "&region=" + HttpClient::url_encode(region)
+                         + "&save=" + HttpClient::url_encode(save_slot);
+        if (turn_time_to_send > 0) {
+            body += "&turnTime=" + std::to_string(turn_time_to_send);
+        }
+        body += "&version=" + HttpClient::url_encode(version)
+             + "&visitSecret=" + HttpClient::url_encode(secret);
+
+        set_state(FzState::STARTING, turn_time_to_send > 0 ? "Claiming turn in queue..." : "Starting server instance...");
+        auto resp = HttpClient::post("https://factorio.zone/api/instance/start", body, headers);
+
+        if (!resp.success) {
+            set_state(FzState::ERROR_STATE, "Failed to start: " + resp.body);
+            return false;
+        }
+
         std::cout << "[FZ] Start instance response: " << resp.body << "\n";
+
+        json j;
         try {
-            auto j = json::parse(resp.body);
-            if (j.contains("launchId")) {
-                long long lid = j["launchId"].get<long long>();
-                LaunchIdCallback lid_cb;
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    launch_id_ = lid;
-                    lid_cb = on_launch_id_;
-                }
-                if (lid_cb) lid_cb(lid);
+            j = json::parse(resp.body);
+        } catch (const std::exception& e) {
+            set_state(FzState::ERROR_STATE, "Invalid JSON from server");
+            return false;
+        }
+
+        int status_code = j.value("statusCode", 0);
+
+        // Check if we are in queue (HTTP 202 or statusCode == 202 or contains turnTime)
+        if (status_code == 202 || (j.contains("turnTime") && !j.contains("launchId"))) {
+            long long turn_time = j.value("turnTime", 0LL);
+            long long cur_time = j.value("currentTime", 0LL);
+            if (cur_time == 0) {
+                cur_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
             }
-            if (j.contains("socket")) {
-                std::string sock = j["socket"].get<std::string>();
-                IpCallback ip_cb;
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    server_ip_ = sock;
-                    state_ = FzState::RUNNING;
-                    ip_cb = on_ip_;
-                }
-                if (ip_cb) ip_cb(sock);
+
+            long long wait_ms = turn_time - cur_time;
+            if (wait_ms < 0) wait_ms = 0;
+            int wait_sec = static_cast<int>((wait_ms + 999) / 1000);
+
+            std::string q_msg = "In queue. Waiting " + std::to_string(wait_sec) + "s for turn (turnTime: " + std::to_string(turn_time) + ")...";
+            LogCallback log_cb;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                log_cb = on_log_;
             }
-        } catch (...) {}
+            if (log_cb) log_cb("[Queue] " + q_msg);
+            set_state(FzState::STARTING, "In queue (" + std::to_string(wait_sec) + "s remaining)");
+
+            // Wait loop with responsive cancellation check
+            auto start_wait = std::chrono::steady_clock::now();
+            auto target_wait_ms = wait_ms + 250; // Small 250ms buffer so we don't request before turn
+            while (running_.load() && !cancel_queue_.load()) {
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - start_wait).count();
+                if (elapsed >= target_wait_ms) break;
+
+                long long rem_sec = (target_wait_ms - elapsed + 999) / 1000;
+                set_state(FzState::STARTING, "In queue (" + std::to_string(rem_sec) + "s remaining)");
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            }
+
+            if (cancel_queue_.load() || !running_.load()) {
+                set_state(FzState::OFFLINE, "Queue wait cancelled");
+                if (log_cb) log_cb("[Queue] Queue wait cancelled.");
+                return false;
+            }
+
+            // Set turnTime for the next start request
+            turn_time_to_send = turn_time;
+            continue; // Loop back and resend with &turnTime=...
+        }
+
+        // Server started!
+        if (j.contains("launchId")) {
+            long long lid = j["launchId"].get<long long>();
+            LaunchIdCallback lid_cb;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                launch_id_ = lid;
+                lid_cb = on_launch_id_;
+            }
+            if (lid_cb) lid_cb(lid);
+        }
+        if (j.contains("socket")) {
+            std::string sock = j["socket"].get<std::string>();
+            IpCallback ip_cb;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                server_ip_ = sock;
+                state_ = FzState::RUNNING;
+                ip_cb = on_ip_;
+            }
+            if (ip_cb) ip_cb(sock);
+        }
         return true;
-    } else {
-        set_state(FzState::ERROR_STATE, "Failed to start: " + resp.body);
-        return false;
     }
+
+    return false;
+}
+
+void FactorioZoneClient::cancel_queue() {
+    cancel_queue_.store(true);
 }
 
 bool FactorioZoneClient::stop_instance() {
+    cancel_queue_.store(true);
+
     std::string secret;
     long long lid = 0;
     {
@@ -223,9 +297,8 @@ bool FactorioZoneClient::stop_instance() {
     }
 
     if (secret.empty() || lid == 0) {
-        std::cerr << "[FZ] Cannot stop: visitSecret or launchId missing\n";
-        set_state(FzState::ERROR_STATE, "Cannot stop: No active launchId found");
-        return false;
+        set_state(FzState::OFFLINE, "Server stopped / Queue cancelled");
+        return true;
     }
 
     std::string body = "launchId=" + std::to_string(lid)

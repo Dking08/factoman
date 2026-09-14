@@ -158,6 +158,182 @@ bool SupabaseSync::publish_state(const std::string& status,
     }
 }
 
+static std::string trim_str(const std::string& s) {
+    size_t first = s.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return "";
+    size_t last = s.find_last_not_of(" \t\r\n");
+    return s.substr(first, (last - first + 1));
+}
+
+static std::string normalize_url(std::string url) {
+    url = trim_str(url);
+    if (url.empty()) return "";
+    if (url.find("http://") != 0 && url.find("https://") != 0) {
+        url = "https://" + url;
+    }
+    while (!url.empty() && url.back() == '/') {
+        url.pop_back();
+    }
+    return url;
+}
+
+bool SupabaseSync::fetch_token_by_key(const std::string& key, std::string& out_token, std::string& out_err) {
+    std::string base_url, api_key;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        base_url = normalize_url(url_);
+        api_key = trim_str(key_);
+    }
+
+    std::string clean_key = trim_str(key);
+    if (clean_key.empty()) {
+        out_err = "Key cannot be empty";
+        return false;
+    }
+
+    if (base_url.empty() || api_key.empty()) {
+        out_err = "Supabase URL and Key must be filled in first";
+        return false;
+    }
+
+    std::string endpoint = base_url + "/rest/v1/user_tokens?key=eq." + HttpClient::url_encode(clean_key) + "&select=token";
+    std::vector<std::string> headers = {
+        "apikey: " + api_key,
+        "Authorization: Bearer " + api_key,
+        "Accept: application/json"
+    };
+
+    auto resp = HttpClient::get(endpoint, headers, 8);
+    if (!resp.success) {
+        out_err = "Lookup failed: HTTP " + std::to_string(resp.status_code) + " - " + resp.body;
+        return false;
+    }
+
+    try {
+        auto j = json::parse(resp.body);
+        if (!j.is_array() || j.empty()) {
+            out_err = "No token found for key '" + clean_key + "'";
+            return false;
+        }
+
+        out_token = j[0].value("token", "");
+        if (out_token.empty()) {
+            out_err = "Token value was empty in database";
+            return false;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        out_err = "Parse error: " + std::string(e.what());
+        return false;
+    }
+}
+
+bool SupabaseSync::fetch_all_token_keys(std::vector<std::string>& out_keys, std::string& out_err) {
+    std::string base_url, api_key;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        base_url = normalize_url(url_);
+        api_key = trim_str(key_);
+    }
+
+    if (base_url.empty() || api_key.empty()) {
+        out_err = "Supabase URL and Key must be filled in first";
+        return false;
+    }
+
+    std::string endpoint = base_url + "/rest/v1/user_tokens?select=key&order=key.asc";
+    std::vector<std::string> headers = {
+        "apikey: " + api_key,
+        "Authorization: Bearer " + api_key,
+        "Accept: application/json"
+    };
+
+    auto resp = HttpClient::get(endpoint, headers, 8);
+    if (!resp.success || resp.status_code < 200 || resp.status_code >= 300) {
+        out_err = "Failed to list keys: HTTP " + std::to_string(resp.status_code) + " - " + resp.body;
+        return false;
+    }
+
+    try {
+        auto j = json::parse(resp.body);
+        if (!j.is_array()) {
+            out_err = "Unexpected response from server";
+            return false;
+        }
+
+        out_keys.clear();
+        for (const auto& item : j) {
+            std::string k = item.value("key", "");
+            if (!k.empty()) {
+                out_keys.push_back(k);
+            }
+        }
+        return true;
+    } catch (const std::exception& e) {
+        out_err = "Parse error: " + std::string(e.what());
+        return false;
+    }
+}
+
+bool SupabaseSync::save_token_to_cloud(const std::string& key, const std::string& token, std::string& out_err) {
+    std::string base_url, api_key;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        base_url = normalize_url(url_);
+        api_key = trim_str(key_);
+    }
+
+    std::string clean_key = trim_str(key);
+    std::string clean_token = trim_str(token);
+
+    if (clean_key.empty() || clean_token.empty()) {
+        out_err = "Both Key and Token must be provided";
+        return false;
+    }
+
+    if (base_url.empty() || api_key.empty()) {
+        out_err = "Supabase URL and Key must be filled in first";
+        return false;
+    }
+
+    // PostgREST upsert requires ?on_conflict=key
+    std::string endpoint = base_url + "/rest/v1/user_tokens?on_conflict=key";
+    std::vector<std::string> headers = {
+        "apikey: " + api_key,
+        "Authorization: Bearer " + api_key,
+        "Content-Type: application/json",
+        "Prefer: resolution=merge-duplicates,return=representation"
+    };
+
+    json payload;
+    payload["key"] = clean_key;
+    payload["token"] = clean_token;
+
+    auto resp = HttpClient::post(endpoint, payload.dump(), headers, 8);
+    if (resp.status_code >= 200 && resp.status_code < 300) {
+        return true;
+    }
+
+    // If POST returns error, try PATCH directly as a fallback
+    std::string patch_endpoint = base_url + "/rest/v1/user_tokens?key=eq." + HttpClient::url_encode(clean_key);
+    std::vector<std::string> patch_headers = {
+        "apikey: " + api_key,
+        "Authorization: Bearer " + api_key,
+        "Content-Type: application/json",
+        "Prefer: return=minimal"
+    };
+    json patch_body;
+    patch_body["token"] = clean_token;
+    auto patch_resp = HttpClient::patch(patch_endpoint, patch_body.dump(), patch_headers, 8);
+    if (patch_resp.status_code >= 200 && patch_resp.status_code < 300) {
+        return true;
+    }
+
+    out_err = "Save failed: POST (" + std::to_string(resp.status_code) + ") " + resp.body + 
+              " | PATCH (" + std::to_string(patch_resp.status_code) + ") " + patch_resp.body;
+    return false;
+}
+
 void SupabaseSync::polling_worker() {
     while (running_.load()) {
         if (is_configured()) {

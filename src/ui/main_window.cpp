@@ -149,7 +149,7 @@ void MainWindow::setup_ui(int w, int h) {
     win_->end();
     win_->resizable(txt_console_);
 
-    settings_dialog_ = std::make_unique<SettingsDialog>(510, 360, "FactoMan Settings");
+    settings_dialog_ = std::make_unique<SettingsDialog>(540, 390, "FactoMan Settings");
 }
 
 void MainWindow::setup_clients() {
@@ -210,6 +210,12 @@ void MainWindow::setup_clients() {
     append_log("[FactoMan] Connecting to factorio.zone WebSocket...");
     if (sync_client_->is_configured()) {
         append_log("[FactoMan] Supabase Sync active (" + config_.player_nick + ").");
+        if (!config_.player_nick.empty() && !config_.user_token.empty()) {
+            std::thread([this]() {
+                std::string err;
+                sync_client_->save_token_to_cloud(config_.player_nick, config_.user_token, err);
+            }).detach();
+        }
     } else {
         append_log("[FactoMan] Supabase Sync not configured. Configure via Settings.");
     }
@@ -459,6 +465,13 @@ void MainWindow::cb_open_settings(Fl_Widget*, void* data) {
 
         self->sync_client_->configure(self->config_.supabase_url, self->config_.supabase_key, self->config_.sync_interval_sec);
         self->fz_client_->set_user_token(self->config_.user_token);
+
+        if (self->sync_client_->is_configured() && !self->config_.player_nick.empty() && !self->config_.user_token.empty()) {
+            std::thread([self]() {
+                std::string err;
+                self->sync_client_->save_token_to_cloud(self->config_.player_nick, self->config_.user_token, err);
+            }).detach();
+        }
 
         self->append_log("[Settings] Configuration updated.");
     });

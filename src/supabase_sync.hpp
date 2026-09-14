@@ -41,6 +41,10 @@ public:
                        const std::string& save_slot = "",
                        const std::string& version = "");
 
+    bool fetch_token_by_key(const std::string& key, std::string& out_token, std::string& out_err);
+    bool fetch_all_token_keys(std::vector<std::string>& out_keys, std::string& out_err);
+    bool save_token_to_cloud(const std::string& key, const std::string& token, std::string& out_err);
+
     bool is_configured() const;
 
 private:
