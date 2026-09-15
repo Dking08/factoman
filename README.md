@@ -16,7 +16,7 @@
   - Cancel queue anytime by clicking "Stop Server".
 - **Multi-User Sync & Token Directory (Supabase)**:
   - Keeps 4-5 friends synchronized with server status and IP.
-  - **User Token Lookup**: Store user tokens by nickname/key in Supabase (`user_tokens` table, e.g. `"bablu"` -> `"TOKEN"`).
+  - **User Token Lookup**: Store user tokens by nickname/key in Supabase (`user_tokens` table, e.g. `"player1"` -> `"TOKEN"`).
   - One-click **`[ Fetch Token ]`** button in Settings to automatically retrieve and populate the token.
 - **100% Standalone Single-File Binary (Zero DLLs)**:
   - Statically embeds FLTK, libcurl, OpenSSL, and the C++ runtime.
@@ -40,6 +40,6 @@ Run the single standalone executable:
 3. To add tokens for your friends:
    ```sql
    INSERT INTO public.user_tokens (key, token)
-   VALUES ('bablu', 'TOKEN');
+   VALUES ('player1', 'TOKEN');
    ```
-4. In FactoMan Settings, type `bablu` and click **Fetch Token** to automatically pull the token!
+4. In FactoMan Settings, type `player1` and click **Fetch Token** to automatically pull the token!

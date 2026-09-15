@@ -46,7 +46,7 @@ CREATE POLICY "Allow anon insert on server_state"
     TO anon
     WITH CHECK (true);
 
--- 5. Create user_tokens table for key-to-token lookups (e.g. "bablu" -> "TOKEN")
+-- 5. Create user_tokens table for key-to-token lookups (e.g. "player1" -> "TOKEN")
 CREATE TABLE IF NOT EXISTS public.user_tokens (
     key TEXT PRIMARY KEY,
     token TEXT NOT NULL,
