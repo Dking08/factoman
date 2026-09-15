@@ -31,3 +31,15 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja -C build
 ./build/factoman
 ```
+
+#### On Nix Systems:
+```bash
+nix run <github-repo-url>
+
+# or clone the repository and,
+nix build
+./result/bin/factoman
+
+# for development shell
+nix develop
+```
