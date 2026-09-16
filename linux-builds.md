@@ -34,7 +34,7 @@ ninja -C build
 
 #### On Nix Systems:
 ```bash
-nix run <github-repo-url>
+nix run github:Dking08/factoman
 
 # or clone the repository and,
 nix build
